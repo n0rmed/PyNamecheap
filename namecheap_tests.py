@@ -1,5 +1,6 @@
 # Run "nosetests" on command line to run these.
-from namecheap import Api, ApiError
+from namecheap import Api, ApiError, Domain
+from privex.helpers import is_true
 from nose.tools import *  # pip install nose
 
 api_key = ''  # You create this on Namecheap site
@@ -13,8 +14,8 @@ except:
     pass
 
 
-def is_true(val):
-    return val in ['true', True, 1, '1', 'yes', 'True', 'TRUE']
+def get_api() -> Api:
+    return Api(username, api_key, ip_address, sandbox=True, debug=True)
 
 
 def random_domain_name():
@@ -25,19 +26,19 @@ def random_domain_name():
 
 
 def test_domain_taken():
-    api = Api(username, api_key, username, ip_address, sandbox=True)
+    api = get_api()
     domain_name = "google.com"
-    assert_equal(api.domains_check(domain_name), False)
+    assert_equal(api.domains_available(domain_name), False)
 
 
 def test_domain_available():
-    api = Api(username, api_key, username, ip_address, sandbox=True)
+    api = get_api()
     domain_name = random_domain_name()
-    assert_equal(api.domains_check(domain_name), True)
+    assert_equal(api.domains_available(domain_name), True)
 
 
 def test_register_domain():
-    api = Api(username, api_key, username, ip_address, sandbox=True)
+    api = get_api()
 
     # Try registering a random domain. Fails if exception raised.
     domain_name = random_domain_name()
@@ -54,21 +55,23 @@ def test_register_domain():
         EmailAddress='jack.trotter@example.com'
     )
     
-    assert_equal(res['Domain'], domain_name)
-    ok_(int(res['DomainID']) > 0)
-    ok_(int(res['TransactionID']) > 0)
-    ok_(is_true(res['Registered']))
+    assert_equal(res.domain, domain_name)
+    ok_(int(res.domain_id) > 0)
+    ok_(int(res.transaction_id) > 0)
+    ok_(is_true(res.registered))
     return domain_name
 
 
 def test_domains_getList():
-    api = Api(username, api_key, username, ip_address, sandbox=True)
-    iter(api.domains_getList())
+    api = get_api()
+    doms = list(api.domains_getList())
+    ok_(len(doms) > 0)
+    ok_(isinstance(doms[0], Domain))
 
 
 @raises(ApiError)
 def test_domains_dns_setDefault_on_nonexisting_domain():
-    api = Api(username, api_key, username, ip_address, sandbox=True)
+    api = get_api()
 
     domain_name = random_domain_name()
 
@@ -77,7 +80,7 @@ def test_domains_dns_setDefault_on_nonexisting_domain():
 
 
 def test_domains_dns_setDefault_on_existing_domain():
-    api = Api(username, api_key, username, ip_address, sandbox=True)
+    api = get_api()
     domain_name = test_register_domain()
     res = api.domains_dns_setDefault(domain_name)
     assert_equal(res['Domain'], domain_name)
@@ -92,17 +95,11 @@ def test_domains_getContacts():
 
 
 def test_domains_dns_setHosts():
-    api = Api(username, api_key, username, ip_address, sandbox=True)
+    api = get_api()
     domain_name = test_register_domain()
     res = api.domains_dns_setHosts(
         domain_name,
-        [{
-            'HostName': '@',
-            'RecordType': 'URL',
-            'Address': 'http://news.ycombinator.com',
-            'MXPref': '10',
-            'TTL': '100'
-        }]
+        dict(HostName='@', RecordType='URL', Address='http://news.ycombinator.com', MXPref='10', TTL='100')
     )
     assert_equal(res['Domain'], domain_name)
     ok_(is_true(res['IsSuccess']))
@@ -116,35 +113,25 @@ def test_domains_dns_setHosts():
 # want to embed my own servers
 # Adjust the name servers below to your own and uncomment the test to run
 
-# def test_domains_dns_setCustom():
-#    api = Api(username, api_key, username, ip_address, sandbox=True)
-#    domain_name = test_register_domain()
-#    result = api.domains_dns_setCustom(
-#        domain_name, { 'Nameservers' : 'ns1.google.com,ns2.google.com' }
-#    )
+
+def test_domains_dns_setCustom():
+    api = get_api()
+    domain_name = test_register_domain()
+    result = api.domains_dns_setCustom(
+        domain_name, 'ns1.privex.io', 'ns2.privex.io', 'ns3.privex.io'
+    )
 
 
 def test_domains_dns_getHosts():
-    api = Api(username, api_key, username, ip_address, sandbox=True)
+    api = get_api()
     domain_name = test_register_domain()
     api.domains_dns_setHosts(
         domain_name,
-        [{
-            'HostName': '@',
-            'RecordType': 'URL',
-            'Address': 'http://news.ycombinator.com',
-            'MXPref': '10',
-            'TTL': '100'
-        }, {
-            'HostName': '*',
-            'RecordType': 'A',
-            'Address': '1.2.3.4',
-            'MXPref': '10',
-            'TTL': '1800'
-        }]
+        dict(HostName='@', RecordType='URL', Address='http://news.ycombinator.com', MXPref='10', TTL='100'),
+        dict(HostName='*', RecordType='A', Address='1.2.3.4', MXPref='10', TTL='1800')
     )
 
-    hosts = api.domains_dns_getHosts(domain_name)
+    hosts = [dict(d.raw_data) for d in api.domains_dns_getHosts(domain_name)]
 
     # these might change
     del hosts[0]['HostId']
@@ -177,74 +164,48 @@ def test_domains_dns_getHosts():
 
 
 def test_domains_dns_addHost():
-    api = Api(username, api_key, username, ip_address, sandbox=True)
+    api = get_api()
     domain_name = test_register_domain()
     api.domains_dns_setHosts(
         domain_name,
-        [{
-            'HostName': '@',
-            'RecordType': 'URL',
-            'Address': 'http://news.ycombinator.com'
-        }]
+        dict(HostName='@', RecordType='URL', Address='http://news.ycombinator.com')
     )
     api.domains_dns_addHost(
         domain_name,
-        {
-            'Name': 'test',
-            'Type': 'A',
-            'Address': '1.2.3.4',
-            'TTL': '100'
-        }
+        record_type='A', value='1.2.3.4', hostname='test', ttl=100
     )
 
     hosts = api.domains_dns_getHosts(domain_name)
+    
+    # h1, h2 = hosts[0], hosts[1]
+    
+    def _find_host(name, address, rtype, mx_pref, ttl):
+        for h in hosts:
+            if h.name == name and h.address == address:
+                assert_equal(h.name, name)
+                assert_equal(h.address, address)
+                assert_equal(h.type, rtype)
+                assert_equal(int(h.mx_pref), int(mx_pref))
+                assert_equal(int(h.ttl), int(ttl))
+                return
+        assert False
 
-    # these might change
-    del hosts[0]['HostId']
-    del hosts[1]['HostId']
-
-    expected_result = [
-        {
-            'Name': 'test',
-            'Address': '1.2.3.4',
-            'TTL': '100',
-            'Type': 'A',
-            'MXPref': '10',
-            'AssociatedAppTitle': '',
-            'FriendlyName': '',
-            'IsActive': 'true',
-            'IsDDNSEnabled': 'false'
-        }, {
-            'Name': '@',
-            'Address': 'http://news.ycombinator.com',
-            'TTL': '1800',
-            'Type': 'URL',
-            'MXPref': '10',
-            'AssociatedAppTitle': '',
-            'FriendlyName': '',
-            'IsActive': 'true',
-            'IsDDNSEnabled': 'false'
-        }
-    ]
-    assert_equal(hosts, expected_result)
+    _find_host('@', 'http://news.ycombinator.com', 'URL', 10, 1800)
+    _find_host('test', '1.2.3.4', 'A', 10, 100)
 
 
 def test_domains_dns_bulkAddHosts():
-    api = Api(username, api_key, username, ip_address, sandbox=True)
+    api = get_api()
     api.payload_limit = 3
     domain_name = test_register_domain()
     api.domains_dns_setHosts(
         domain_name,
-        [{
-            'HostName': '@',
-            'RecordType': 'URL',
-            'Address': 'http://news.ycombinator.com'
-        }]
+        dict(HostName='@', RecordType='URL', Address='http://news.ycombinator.com')
     )
     for i in range(1, 10):
         api.domains_dns_addHost(
             domain_name,
-            {'Name': "test" + str(i), 'Type': 'A', 'Address': '1.2.3.4', 'TTL': '60'}
+            hostname=f"test{str(i)}", record_type='A', value='1.2.3.4', ttl='60'
         )
 
     hosts = api.domains_dns_getHosts(domain_name)
@@ -256,55 +217,30 @@ def test_domains_dns_bulkAddHosts():
 
 
 def test_domains_dns_delHost():
-    api = Api(username, api_key, username, ip_address, sandbox=True)
+    api = get_api()
     domain_name = test_register_domain()
     
     res = api.domains_dns_setHosts(
         domain_name,
-        [{
-            'HostName': '@',
-            'RecordType': 'URL',
-            'Address': 'http://news.ycombinator.com',
-            'TTL': '200'
-        }, {
-            'HostName': 'test',
-            'RecordType': 'A',
-            'Address': '1.2.3.4'
-        }]
+        dict(HostName='@', RecordType='URL', Address='http://news.ycombinator.com', TTL='200'),
+        dict(HostName='test', RecordType='A', Address='1.2.3.4')
     )
     assert_equal(res['Domain'], domain_name)
     ok_(is_true(res['IsSuccess']))
     
-    res = api.domains_dns_delHost(
-        domain_name,
-        {
-            'Name': 'test',
-            'Type': 'A',
-            'Address': '1.2.3.4'
-        }
-    )
+    res = api.domains_dns_delHost(domain_name, record_type='A', value='1.2.3.4', hostname='test')
     assert_equal(res['Domain'], domain_name)
     ok_(is_true(res['IsSuccess']))
     
     hosts = api.domains_dns_getHosts(domain_name)
-
-    # these might change
-    del hosts[0]['HostId']
-
-    expected_result = [
-        {
-            'Name': '@',
-            'Address': 'http://news.ycombinator.com',
-            'TTL': '200',
-            'Type': 'URL',
-            'MXPref': '10',
-            'AssociatedAppTitle': '',
-            'FriendlyName': '',
-            'IsActive': 'true',
-            'IsDDNSEnabled': 'false'
-        }
-    ]
-    assert_equal(hosts, expected_result)
+    
+    host = hosts[0]
+    
+    assert_equal(host.name, '@')
+    assert_equal(host.address, 'http://news.ycombinator.com')
+    assert_equal(host.ttl, 200)
+    assert_equal(host.type, 'URL')
+    assert_equal(host.mx_pref, 10)
 
 
 def test_list_of_dictionaries_to_numbered_payload():

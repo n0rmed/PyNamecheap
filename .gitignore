@@ -1,5 +1,6 @@
 env
 credentials.py
+credentials_*.py
 .DS_Store
 
 *.py[cod]
