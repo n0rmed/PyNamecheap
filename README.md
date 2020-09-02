@@ -1,6 +1,13 @@
 Namecheap API for Python
 ===========
 
+[![PyPi Version](https://img.shields.io/pypi/v/privex-namecheap.svg)](https://pypi.org/project/privex-namecheap/)
+![License Button](https://img.shields.io/pypi/l/privex-namecheap) 
+![PyPI - Downloads](https://img.shields.io/pypi/dm/privex-namecheap)
+![PyPI - Python Version](https://img.shields.io/pypi/pyversions/privex-namecheap) 
+![GitHub last commit](https://img.shields.io/github/last-commit/Privex/PyNamecheap)
+
+
 PyNamecheap is a Namecheap API client in Python.
 API itself is documented at <https://www.namecheap.com/support/api/intro/>
 
