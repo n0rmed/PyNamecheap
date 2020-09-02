@@ -689,7 +689,7 @@ class Api(object):
                 product_type='DOMAIN', category='DOMAINS', action=action.upper(), name=t.upper(),
                 **user_payload
             )
-            for price in data['domains']['register'][t.lower()]:
+            for price in data['domains'][action.lower()][t.lower()]:
                 if int(price['Duration']) == int(years) and price.get('DurationType', 'YEAR').lower() == 'year':
                     price['Tld'] = t.lower()
                     tld_prices[t.lower()] = TLDPrice.from_dict(price)
