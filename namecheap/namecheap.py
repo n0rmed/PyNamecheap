@@ -23,6 +23,7 @@ Python Namecheap API
     +===================================================================+
 
 """
+import copy
 import sys
 import time
 import requests  # pip install requests
@@ -447,7 +448,16 @@ class Api(object):
         if xml.attrib['Status'] == 'ERROR':
             # Response namespace must be prepended to tag names.
             # xpath = f'.//{{{NAMESPACE}}}Errors/{{{NAMESPACE}}}Error'
-            error = self.get_element(xml, 'Error')
+            
+            # First we try and find a normal <Error /> without namespacing
+            error = xml.find('.//Error')
+            if error is None:
+                # If we can't find a non-namespaced error, then try and find a namespaced error.
+                error = self.get_element(xml, 'Error')
+            # If we still can't find the error tag, give up and raise an unknown error.
+            if error is None:
+                raise ApiError(0, "An unknown error has occurred - cannot locate Error XML element to display correct message.")
+            # Otherwise, raise an error with the appropriate error number and text.
             raise ApiError(error.attrib['Number'], error.text)
 
         return xml
@@ -470,35 +480,65 @@ class Api(object):
         """When listing domain names, only one page is returned
         initially. The list needs to be paged through to see all.
         This iterator gets the next page when necessary."""
+
+        # @r_cache(lambda self: , 60)
         def _get_more_results(self):
             xml = self.api.fetch_xml(self.payload)
             xpath = f'.//{{{NAMESPACE}}}CommandResponse/{{{NAMESPACE}}}DomainGetListResult/{{{NAMESPACE}}}Domain'
             domains = xml.findall(xpath)
-            for domain in domains:
-                self.results.append(domain.attrib)
+            return [domain.attrib for domain in domains]
+        
+        def get_more_results(self):
+            for attr in self._get_more_results():
+                self.results.append(attr)
             self.payload['Page'] += 1
 
-        def __init__(self, api, payload, dtclass: Type[CamelSnakeDictable] = None):
+        @property
+        def next_result(self):
+            if self.dtclass:
+                return self.dtclass.from_dict(self.results[self.i])
+            return self.results[self.i]
+
+        def __init__(self, api, payload, dtclass: Type[CamelSnakeDictable] = None, cache_key='getList', use_cache=True):
             self.api = api
             self.payload = payload
+            # self.orig_payload = dict(copy.deepcopy(payload))
+            self.cache_key = cache_key
+            self.use_cache = use_cache
+            self.has_cache = False
             self.dtclass = dtclass
             self.results = []
             self.i = -1
+            results_cached = cached.get(self.cache_key)
+            if self.use_cache and not empty(results_cached, True, True):
+                log.debug("Domain list is cached in key: %s", self.cache_key)
+                log.debug("Setting self.results to cached data: %s", results_cached)
+                self.results = results_cached
+                self.has_cache = True
+            else:
+                log.debug("Domain list is NOT cached. Querying namecheap API.")
 
         def __iter__(self):
             return self
 
         def __next__(self):
             self.i += 1
-            if self.i >= len(self.results):
-                self._get_more_results()
+            if self.has_cache:
+                if self.i >= len(self.results):
+                    log.debug("End of cached results.")
+                    raise StopIteration
+                log.debug("Returning result %s from cache: %s", self.i, self.next_result)
+                return self.next_result
 
             if self.i >= len(self.results):
+                log.debug("Loading next page of domain list results from API")
+                self.get_more_results()
+
+            if self.i >= len(self.results):
+                log.debug("Reached end of domain list results. Storing results into cache key %s - results: %s", self.cache_key, self.results)
+                cached.set(self.cache_key, self.results, 60)
                 raise StopIteration
-            else:
-                if self.dtclass:
-                    return self.dtclass.from_dict(self.results[self.i])
-                return self.results[self.i]
+            return self.next_result
             
         next = __next__
 
@@ -1114,7 +1154,7 @@ class Api(object):
     remove_record = domains_dns_delHost
 
     # https://www.namecheap.com/support/api/methods/domains/get-list/
-    @r_cache(lambda self, *args, **kwargs: _cstr(self, 'getList', *args, **kwargs), 60)
+    # @r_cache(lambda self, *args, **kwargs: _cstr(self, 'getList', *args, **kwargs), 60)
     def domains_getList(self, ListType=None, SearchTerm=None, PageSize=None, SortBy=None, **user_payload) -> Generator[Domain, None, None]:
         """
         Retrieve a list of all domains on your Namecheap account - as a :class:`.Generator` / iterable of :class:`.Domain`
@@ -1165,6 +1205,7 @@ class Api(object):
             }
         """
 
+        use_cache = user_payload.pop('r_cache', user_payload.pop('use_cache', True))
         # The payload is a dict of GET args that is passed to
         # the lazy-loading iterator so that it can know how to
         # get more results.
@@ -1179,7 +1220,10 @@ class Api(object):
             extra_payload['SortBy'] = SortBy
         extra_payload = {**extra_payload, **user_payload}
         payload, extra_payload = self._payload('namecheap.domains.getList', extra_payload)
-        yield from self.LazyGetListIterator(self, payload, dtclass=Domain)
+        cache_key = _cstr(self, 'getList', ListType=ListType, SearchTerm=SearchTerm, PageSize=PageSize, SortBy=SortBy)
+        yield from self.LazyGetListIterator(
+            self, payload, dtclass=Domain, cache_key=cache_key, use_cache=use_cache
+        )
     
     list_domains = domains_getList
 
