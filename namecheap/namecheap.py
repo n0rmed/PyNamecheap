@@ -36,7 +36,7 @@ from privex.loghelper import LogHelper
 from namecheap.helpers import api_string
 from namecheap.exceptions import ApiError
 from namecheap.objects import CamelSnakeDictable, CreateDomainResponse, Domain, DomainCheck, DomainDetails, DomainRecord, NamecheapTLD, \
-    TLDPrice
+    TLDPrice, Balance
 
 __all__ = [
     'NAMECHEAP_ENDPOINTS', 'ENDPOINTS', 'NAMESPACE', 'DEFAULT_ATTEMPTS_COUNT', 'DEFAULT_ATTEMPTS_DELAY', 'Api'
@@ -1348,3 +1348,49 @@ class Api(object):
         return DomainDetails.from_dict(info_result)
     
     get_domain_info = domains_getInfo
+
+    # https://www.namecheap.com/support/api/methods/users/get-balances/
+    def get_balances(self, force_dict: bool = False) -> Union[Balance, Dict[str, Balance]]:
+        """
+
+        Example:
+
+            >>> balance = self.get_balances()
+            >>> print(balance)
+            Balance(
+                currency='USD',
+                error_no=None,
+                description='',
+                AvailableBalance=Decimal('8971.68'),
+                AccountBalance=Decimal('8971.68'),
+                EarnedAmount=Decimal('0.0000'),
+                WithdrawableAmount=Decimal('0.0000'),
+                FundsRequiredForAutoRenew=Decimal('0.0000')
+            )
+            >>> balance.available_balance
+            '8971.68'
+            >>> balance.currency
+            'USD'
+
+            Method may return Dict[str, Balance] if more than 1 currency is on the account, or if force_dict=True
+            >>> balance = self.get_balances(force_dict=True)
+            >>> print(balance)
+            {
+                'USD': Balance(
+                    currency='USD',
+                    error_no=None,
+                    description='',
+                    AvailableBalance=Decimal('8971.68'),
+                    AccountBalance=Decimal('8971.68'),
+                    EarnedAmount=Decimal('0.0000'),
+                    WithdrawableAmount=Decimal('0.0000'),
+                    FundsRequiredForAutoRenew=Decimal('0.0000'))
+            }
+
+        """
+        xml = self.call('namecheap.users.getBalances')
+        xpath = f'.//{{{NAMESPACE}}}CommandResponse/{{{NAMESPACE}}}UserGetBalancesResult'
+        results = {}
+        for check_result in xml.findall(xpath):
+            results[check_result.attrib['Currency']] = Balance.from_dict(dict(check_result.items()))
+        return results if force_dict or len(results) > 1 else results[list(results.keys())[0]]

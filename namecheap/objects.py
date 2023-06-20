@@ -10,7 +10,7 @@ import logging
 
 __all__ = [
     'CamelSnakeDictable', 'CreateDomainResponse', 'DomainRecord', 'Domain', 'DomainCheck',
-    'TLDPrice', 'DomainDetails', 'NamecheapTLD'
+    'TLDPrice', 'DomainDetails', 'NamecheapTLD', 'Balance'
 ]
 
 
@@ -384,3 +384,32 @@ class NamecheapTLD(CamelSnakeDictable):
             v = getattr(self, k, None)
             if not empty(v) and not isinstance(v, int):
                 setattr(self, k, int(v))
+
+@dataclass
+class Balance(CamelSnakeDictable):
+    class DictConfig:
+        dict_convert_mode = None
+        stringify_all = True
+    currency: str
+    available_balance: Decimal = field(default_factory=Decimal)
+    account_balance: Decimal = field(default_factory=Decimal)
+    earned_amount: Decimal = field(default_factory=Decimal)
+    withdrawable_amount: Decimal = field(default_factory=Decimal)
+    funds_required_for_auto_renew: Decimal = field(default_factory=Decimal)
+    raw_data: Union[dict, DictObject] = field(default_factory=DictObject, repr=False)
+
+    def __post_init__(self):
+        conv_dec_keys = [
+            'available_balance',
+            'account_balance',
+            'earned_amount',
+            'withdrawable_amount',
+            'funds_required_for_auto_renew',
+        ]
+        for k in conv_dec_keys:
+            v = getattr(self, k, None)
+            if empty(v):
+                log.debug("Skipping %s - is empty", k)
+                continue
+            log.debug("Converting %s to decimal", k)
+            setattr(self, k, dec_round(Decimal(v), dp=2))
