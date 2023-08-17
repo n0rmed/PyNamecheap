@@ -1,0 +1,24 @@
+[tool.poetry]
+name = "pynamecheap"
+version = "0.1.2"
+description = "Namecheap API client in Python (fork of Bemmu/PyNamecheap)"
+authors = ["Privex Inc."]
+license = "MIT"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+requests = "^2.31.0"
+privex-helpers = ">=2.18.0"
+privex-loghelper = "^1.0.6"
+
+[tool.poetry.group.dev.dependencies]
+setuptools = "^68.1.0"
+wheel = "^0.41.1"
+twine = "^4.0.2"
+nose = "^1.3.7"
+privex-helpers = {extras = ["setuppy"], version = "^3.2.1"}
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
