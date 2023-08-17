@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "privex_namecheap"
+name = "namecheap"
 version = "0.1.2"
 description = "Namecheap API client in Python (fork of Bemmu/PyNamecheap)"
 authors = ["Privex Inc."]
