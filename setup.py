@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import warnings
-import namecheap
 from os.path import join, dirname
 from setuptools import find_packages, setup
 
@@ -38,7 +37,7 @@ extra_packages = {
 
 setup(
     name='privex_namecheap',
-    version=namecheap.VERSION,
+    version='0.1.2',
     url='https://github.com/Privex/PyNamecheap',
     license='MIT',
     author='Privex Inc.',
